@@ -13,6 +13,7 @@ class GymAttendanceCard extends StatelessWidget {
   final int totalSessions;
   final int durationMinutes;
   final int avgIntensityPercent;
+  final bool isCheckedIn;
   final VoidCallback? onCheckIn;
 
   const GymAttendanceCard({
@@ -21,11 +22,19 @@ class GymAttendanceCard extends StatelessWidget {
     required this.totalSessions,
     required this.durationMinutes,
     required this.avgIntensityPercent,
+    this.isCheckedIn = false,
     this.onCheckIn,
   });
 
   double get _progress =>
       totalSessions > 0 ? completedSessions / totalSessions : 0;
+
+  String get _motivationText {
+    final remaining = totalSessions - completedSessions;
+    if (remaining <= 0) return 'Perfect week! 🔥';
+    if (remaining == 1) return 'One more for a perfect week!';
+    return '$remaining sessions left this week';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +79,7 @@ class GymAttendanceCard extends StatelessWidget {
                           ),
                           const SizedBox(height: AppSpacing.xs),
                           Text(
-                            'One more for a perfect week!',
+                            _motivationText,
                             style: AppTextStyles.bodySm.copyWith(
                               color: AppColors.textMuted,
                             ),
@@ -113,12 +122,44 @@ class GymAttendanceCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xl),
-                // CTA
-                PrimaryButton(
-                  label: 'Check-in to Gym',
-                  icon: Icons.add_task,
-                  onPressed: onCheckIn,
-                ),
+                // CTA — changes based on check-in state
+                isCheckedIn
+                    ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryAlpha10,
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusLg,
+                          ),
+                          border: Border.all(color: AppColors.primaryAlpha20),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              color: AppColors.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Text(
+                              'Checked In Today',
+                              style: AppTextStyles.bodyBase.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : PrimaryButton(
+                        label: 'Check-in to Gym',
+                        icon: Icons.add_task,
+                        onPressed: onCheckIn,
+                      ),
               ],
             ),
           ],

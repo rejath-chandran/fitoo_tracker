@@ -18,7 +18,12 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'fitoo_tracker.db');
 
-    return openDatabase(path, version: 1, onCreate: _onCreate);
+    return openDatabase(
+      path,
+      version: 2,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -41,6 +46,25 @@ class DatabaseHelper {
         weight      REAL    DEFAULT 0,
         sort_order  INTEGER DEFAULT 0,
         FOREIGN KEY (template_id) REFERENCES templates (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await _createGymSessionsTable(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _createGymSessionsTable(db);
+    }
+  }
+
+  Future<void> _createGymSessionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE gym_sessions (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        date              TEXT    NOT NULL,
+        duration_minutes  INTEGER DEFAULT 0,
+        intensity_percent INTEGER DEFAULT 0
       )
     ''');
   }
