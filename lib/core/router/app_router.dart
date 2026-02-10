@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/workout/workout_screen.dart';
+import '../../features/workouts_list/workouts_list_screen.dart';
+import '../../features/workouts_list/template_detail_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../widgets/app_scaffold.dart';
 
@@ -28,8 +30,7 @@ final goRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/workouts',
-              builder: (context, state) =>
-                  const Scaffold(body: Center(child: Text('Workouts List'))),
+              builder: (context, state) => const WorkoutsListScreen(),
             ),
           ],
         ),
@@ -56,6 +57,14 @@ final goRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/workout/active',
       builder: (context, state) => const WorkoutScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/workouts/template/:id',
+      builder: (context, state) {
+        final id = int.parse(state.pathParameters['id']!);
+        return TemplateDetailScreen(templateId: id);
+      },
     ),
   ],
 );
