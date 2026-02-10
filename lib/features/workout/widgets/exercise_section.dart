@@ -3,37 +3,27 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../providers/active_workout_provider.dart';
 
-/// Data model for a single exercise set row.
-class ExerciseSetData {
-  final int setNumber;
-  final int previousWeight;
-  final int previousReps;
-  final String? currentWeight;
-  final String? currentReps;
-  final bool isCompleted;
-  final bool isActive;
-
-  const ExerciseSetData({
-    required this.setNumber,
-    required this.previousWeight,
-    required this.previousReps,
-    this.currentWeight,
-    this.currentReps,
-    this.isCompleted = false,
-    this.isActive = false,
-  });
-}
-
-/// Exercise section with title, set header, set rows, and add set button.
+/// Exercise section with title, set rows, and add-set button.
+/// All callbacks are forwarded from the parent (WorkoutScreen).
 class ExerciseSection extends StatelessWidget {
-  final String exerciseName;
-  final List<ExerciseSetData> sets;
+  final int exerciseIndex;
+  final WorkoutExercise exercise;
+  final void Function(int exerciseIndex) onAddSet;
+  final void Function(int exerciseIndex, int setIndex) onToggleComplete;
+  final void Function(int exerciseIndex, int setIndex, double weight)
+  onWeightChanged;
+  final void Function(int exerciseIndex, int setIndex, int reps) onRepsChanged;
 
   const ExerciseSection({
     super.key,
-    required this.exerciseName,
-    required this.sets,
+    required this.exerciseIndex,
+    required this.exercise,
+    required this.onAddSet,
+    required this.onToggleComplete,
+    required this.onWeightChanged,
+    required this.onRepsChanged,
   });
 
   @override
@@ -50,11 +40,14 @@ class ExerciseSection extends StatelessWidget {
               size: 20,
             ),
             const SizedBox(width: AppSpacing.sm),
-            Expanded(child: Text(exerciseName, style: AppTextStyles.headingLg)),
-            const Icon(
-              Icons.info_outline,
-              color: AppColors.textMuted,
-              size: 20,
+            Expanded(
+              child: Text(exercise.name, style: AppTextStyles.headingLg),
+            ),
+            Text(
+              '${exercise.completedSets}/${exercise.sets.length}',
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.textSecondary,
+              ),
             ),
           ],
         ),
@@ -67,12 +60,20 @@ class ExerciseSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
 
         // Set rows
-        ...sets.map(
-          (set) => Padding(
+        ...exercise.sets.asMap().entries.map((entry) {
+          final setIndex = entry.key;
+          final set = entry.value;
+          return Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: _ExerciseSetRow(data: set),
-          ),
-        ),
+            child: _SetRow(
+              set: set,
+              onToggleComplete: () => onToggleComplete(exerciseIndex, setIndex),
+              onWeightChanged: (w) =>
+                  onWeightChanged(exerciseIndex, setIndex, w),
+              onRepsChanged: (r) => onRepsChanged(exerciseIndex, setIndex, r),
+            ),
+          );
+        }),
 
         // Add set button
         _buildAddSetButton(),
@@ -86,11 +87,10 @@ class ExerciseSection extends StatelessWidget {
       child: Row(
         children: const [
           SizedBox(width: 40, child: Center(child: _HeaderLabel('SET'))),
-          Expanded(child: Center(child: _HeaderLabel('PREVIOUS'))),
           SizedBox(width: 64, child: Center(child: _HeaderLabel('LBS'))),
           SizedBox(width: 8),
           SizedBox(width: 64, child: Center(child: _HeaderLabel('REPS'))),
-          SizedBox(width: 8),
+          Spacer(),
           SizedBox(width: 40, child: Center(child: _HeaderLabel('DONE'))),
         ],
       ),
@@ -104,13 +104,12 @@ class ExerciseSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         border: Border.all(
           color: AppColors.textSecondary.withValues(alpha: 0.3),
-          style: BorderStyle.solid,
         ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: () => onAddSet(exerciseIndex),
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -138,47 +137,37 @@ class _HeaderLabel extends StatelessWidget {
   }
 }
 
-/// Single row for an exercise set (set#, previous, weight, reps, checkbox).
-class _ExerciseSetRow extends StatefulWidget {
-  final ExerciseSetData data;
-  const _ExerciseSetRow({required this.data});
+/// Single row for one set.
+class _SetRow extends StatelessWidget {
+  final WorkoutSet set;
+  final VoidCallback onToggleComplete;
+  final void Function(double) onWeightChanged;
+  final void Function(int) onRepsChanged;
 
-  @override
-  State<_ExerciseSetRow> createState() => _ExerciseSetRowState();
-}
-
-class _ExerciseSetRowState extends State<_ExerciseSetRow> {
-  late bool _isCompleted;
-
-  @override
-  void initState() {
-    super.initState();
-    _isCompleted = widget.data.isCompleted;
-  }
+  const _SetRow({
+    required this.set,
+    required this.onToggleComplete,
+    required this.onWeightChanged,
+    required this.onRepsChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isActive = widget.data.isActive;
-
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: AppColors.primaryAlpha05,
+        color: set.isCompleted
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : AppColors.primaryAlpha05,
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         border: Border.all(
-          color: isActive ? AppColors.primaryAlpha30 : Colors.transparent,
+          color: set.isCompleted
+              ? AppColors.primaryAlpha30
+              : Colors.transparent,
         ),
-        boxShadow: isActive
-            ? [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                ),
-              ]
-            : null,
       ),
       child: Row(
         children: [
@@ -187,19 +176,12 @@ class _ExerciseSetRowState extends State<_ExerciseSetRow> {
             width: 40,
             child: Center(
               child: Text(
-                '${widget.data.setNumber}',
+                '${set.setNumber}',
                 style: AppTextStyles.bodyLg.copyWith(
-                  color: isActive ? AppColors.primary : AppColors.textPrimary,
+                  color: set.isCompleted
+                      ? AppColors.primary
+                      : AppColors.textPrimary,
                 ),
-              ),
-            ),
-          ),
-          // Previous
-          Expanded(
-            child: Center(
-              child: Text(
-                '${widget.data.previousWeight} x ${widget.data.previousReps}',
-                style: AppTextStyles.bodyXs,
               ),
             ),
           ),
@@ -207,8 +189,12 @@ class _ExerciseSetRowState extends State<_ExerciseSetRow> {
           SizedBox(
             width: 64,
             child: _NumericInput(
-              initialValue: widget.data.currentWeight,
-              placeholder: '${widget.data.previousWeight}',
+              initialValue: set.weight > 0 ? set.weight.toStringAsFixed(0) : '',
+              placeholder: '0',
+              onChanged: (val) {
+                final w = double.tryParse(val) ?? 0;
+                onWeightChanged(w);
+              },
             ),
           ),
           const SizedBox(width: 8),
@@ -216,11 +202,15 @@ class _ExerciseSetRowState extends State<_ExerciseSetRow> {
           SizedBox(
             width: 64,
             child: _NumericInput(
-              initialValue: widget.data.currentReps,
-              placeholder: '${widget.data.previousReps}',
+              initialValue: set.reps > 0 ? '${set.reps}' : '',
+              placeholder: '0',
+              onChanged: (val) {
+                final r = int.tryParse(val) ?? 0;
+                onRepsChanged(r);
+              },
             ),
           ),
-          const SizedBox(width: 8),
+          const Spacer(),
           // Checkbox
           SizedBox(
             width: 40,
@@ -229,8 +219,8 @@ class _ExerciseSetRowState extends State<_ExerciseSetRow> {
                 width: 24,
                 height: 24,
                 child: Checkbox(
-                  value: _isCompleted,
-                  onChanged: (val) => setState(() => _isCompleted = val!),
+                  value: set.isCompleted,
+                  onChanged: (_) => onToggleComplete(),
                 ),
               ),
             ),
@@ -241,24 +231,49 @@ class _ExerciseSetRowState extends State<_ExerciseSetRow> {
   }
 }
 
-/// Small numeric text field for weight/reps input.
-class _NumericInput extends StatelessWidget {
+/// Numeric field for weight/reps.
+class _NumericInput extends StatefulWidget {
   final String? initialValue;
   final String? placeholder;
+  final void Function(String) onChanged;
 
-  const _NumericInput({this.initialValue, this.placeholder});
+  const _NumericInput({
+    this.initialValue,
+    this.placeholder,
+    required this.onChanged,
+  });
+
+  @override
+  State<_NumericInput> createState() => _NumericInputState();
+}
+
+class _NumericInputState extends State<_NumericInput> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: TextEditingController(text: initialValue),
+      controller: _controller,
       keyboardType: TextInputType.number,
       textInputAction: TextInputAction.next,
       textAlign: TextAlign.center,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       style: AppTextStyles.bodyLg.copyWith(fontSize: 13),
+      onChanged: widget.onChanged,
       decoration: InputDecoration(
-        hintText: placeholder,
+        hintText: widget.placeholder,
         hintStyle: AppTextStyles.bodySm.copyWith(
           color: AppColors.textSecondary,
         ),

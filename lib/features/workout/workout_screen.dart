@@ -1,31 +1,54 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/widgets/linear_progress.dart';
 import '../../core/widgets/primary_button.dart';
 import '../../core/widgets/stat_tile.dart';
+import 'providers/active_workout_provider.dart';
 import 'widgets/exercise_section.dart';
 
 /// Active workout logging screen (full-screen, no bottom nav).
-class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key});
+class WorkoutScreen extends ConsumerStatefulWidget {
+  final int? templateId;
+  const WorkoutScreen({super.key, this.templateId});
 
   @override
-  State<WorkoutScreen> createState() => _WorkoutScreenState();
+  ConsumerState<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-class _WorkoutScreenState extends State<WorkoutScreen> {
-  final String _timer = '00:42:18';
+class _WorkoutScreenState extends ConsumerState<WorkoutScreen> {
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Defer until after the first build so refs are valid.
+    Future.microtask(() => _initWorkout());
+  }
+
+  Future<void> _initWorkout() async {
+    if (_initialized) return;
+    _initialized = true;
+    final notifier = ref.read(activeWorkoutProvider.notifier);
+    if (widget.templateId != null) {
+      await notifier.startFromTemplate(widget.templateId!);
+    } else {
+      notifier.startEmpty();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final workout = ref.watch(activeWorkoutProvider);
+    final notifier = ref.read(activeWorkoutProvider.notifier);
+
     return Scaffold(
       body: Column(
         children: [
-          // Sticky header with blur
-          _buildHeader(context),
+          // Sticky header
+          _buildHeader(context, workout),
 
           // Scrollable content
           Expanded(
@@ -35,66 +58,48 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 vertical: AppSpacing.sm,
               ),
               children: [
-                // Exercise 1: Barbell Bench Press
-                ExerciseSection(
-                  exerciseName: 'Barbell Bench Press',
-                  sets: [
-                    ExerciseSetData(
-                      setNumber: 1,
-                      previousWeight: 225,
-                      previousReps: 8,
-                      currentWeight: '230',
-                      currentReps: '8',
-                      isCompleted: true,
+                // Exercise sections
+                ...workout.exercises.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final exercise = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+                    child: ExerciseSection(
+                      exerciseIndex: i,
+                      exercise: exercise,
+                      onAddSet: (idx) => notifier.addSet(idx),
+                      onToggleComplete: (ei, si) =>
+                          notifier.toggleSetComplete(ei, si),
+                      onWeightChanged: (ei, si, w) =>
+                          notifier.updateWeight(ei, si, w),
+                      onRepsChanged: (ei, si, r) =>
+                          notifier.updateReps(ei, si, r),
                     ),
-                    ExerciseSetData(
-                      setNumber: 2,
-                      previousWeight: 225,
-                      previousReps: 8,
-                      isActive: true,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.xl),
-
-                // Exercise 2: Incline DB Press
-                ExerciseSection(
-                  exerciseName: 'Incline DB Press',
-                  sets: [
-                    ExerciseSetData(
-                      setNumber: 1,
-                      previousWeight: 70,
-                      previousReps: 10,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.xxl),
+                  );
+                }),
 
                 // Add exercise button
-                _buildAddExerciseButton(),
+                _buildAddExerciseButton(notifier),
 
                 const SizedBox(height: AppSpacing.base),
 
                 // Summary tiles
                 Row(
-                  children: const [
+                  children: [
                     Expanded(
                       child: StatTile(
                         label: 'Total Volume',
-                        value: '12,450',
+                        value: _formatVolume(workout.totalVolume),
                         suffix: 'lbs',
                         compact: true,
                         backgroundColor: AppColors.primaryAlpha05,
                       ),
                     ),
-                    SizedBox(width: AppSpacing.base),
+                    const SizedBox(width: AppSpacing.base),
                     Expanded(
                       child: StatTile(
-                        label: 'Rest Timer',
-                        value: '01:30',
-                        suffix: 'sec',
+                        label: 'Sets Done',
+                        value: '${workout.completedSets}/${workout.totalSets}',
                         compact: true,
                         backgroundColor: AppColors.primaryAlpha05,
                       ),
@@ -119,7 +124,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: PrimaryButton(
                 label: 'COMPLETE WORKOUT',
                 isLarge: true,
-                onPressed: () => context.pop(),
+                onPressed: () {
+                  notifier.finishWorkout();
+                  Navigator.of(context).pop();
+                },
               ),
             ),
           ),
@@ -128,7 +136,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, ActiveWorkoutState workout) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.bgDark.withValues(alpha: 0.8),
@@ -145,29 +153,32 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Close button
                   IconButton(
-                    onPressed: () => context.pop(),
+                    onPressed: () {
+                      ref.read(activeWorkoutProvider.notifier).finishWorkout();
+                      Navigator.of(context).pop();
+                    },
                     icon: const Icon(Icons.close, color: AppColors.textPrimary),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.transparent,
                     ),
                   ),
-                  // Title + timer
                   Column(
                     children: [
                       Text(
-                        'PUSH DAY - HYPERTROPHY',
+                        workout.templateName.toUpperCase(),
                         style: AppTextStyles.caption.copyWith(
                           color: AppColors.primary,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 2,
                         ),
                       ),
-                      Text(_timer, style: AppTextStyles.timerDisplay),
+                      Text(
+                        workout.timerDisplay,
+                        style: AppTextStyles.timerDisplay,
+                      ),
                     ],
                   ),
-                  // More button
                   IconButton(
                     onPressed: () {},
                     icon: const Icon(
@@ -188,7 +199,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 AppSpacing.base,
                 AppSpacing.base,
               ),
-              child: const LinearProgress(progress: 0.65),
+              child: LinearProgress(progress: workout.progress),
             ),
           ],
         ),
@@ -196,7 +207,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
   }
 
-  Widget _buildAddExerciseButton() {
+  Widget _buildAddExerciseButton(ActiveWorkoutNotifier notifier) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.primaryAlpha10,
@@ -206,7 +217,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: () => _showAddExerciseDialog(notifier),
           borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
@@ -227,5 +238,109 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         ),
       ),
     );
+  }
+
+  void _showAddExerciseDialog(ActiveWorkoutNotifier notifier) {
+    final controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.cardDark,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppSpacing.radiusXxl),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: AppSpacing.xl),
+                      decoration: BoxDecoration(
+                        color: AppColors.whiteAlpha10,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text('Add Exercise', style: AppTextStyles.heading2xl),
+                  const SizedBox(height: AppSpacing.xl),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceDark,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                      border: Border.all(color: AppColors.whiteAlpha05),
+                    ),
+                    child: TextField(
+                      controller: controller,
+                      autofocus: true,
+                      style: AppTextStyles.bodyBase,
+                      decoration: InputDecoration(
+                        hintText: 'e.g., Lateral Raises',
+                        hintStyle: AppTextStyles.bodySm.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(AppSpacing.md),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final name = controller.text.trim();
+                        if (name.isNotEmpty) {
+                          notifier.addExercise(name);
+                          Navigator.pop(ctx);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.bgDark,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.base,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusLg,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'ADD',
+                        style: AppTextStyles.bodyBase.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: AppColors.bgDark,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatVolume(double vol) {
+    if (vol >= 1000) {
+      return '${(vol / 1000).toStringAsFixed(1)}k';
+    }
+    return vol.toStringAsFixed(0);
   }
 }

@@ -56,7 +56,13 @@ final goRouter = GoRouter(
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/workout/active',
-      builder: (context, state) => const WorkoutScreen(),
+      builder: (context, state) {
+        final templateIdStr = state.uri.queryParameters['templateId'];
+        final templateId = templateIdStr != null
+            ? int.tryParse(templateIdStr)
+            : null;
+        return WorkoutScreen(templateId: templateId);
+      },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
